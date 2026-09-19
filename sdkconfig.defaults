@@ -1,0 +1,15 @@
+# Minimal config for the 1.54G panel, derived from the vendor's
+# 09_E_Paper_Test sdkconfig.defaults.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+# Common roots only -- the full bundle costs ~250KB. Switch to the full bundle
+# if an HTTPS endpoint fails the TLS handshake.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# TLS + JSON parsing + text wrapping in app_main need more than the 3.5KB default.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

@@ -1,0 +1,32 @@
+# Vendor SDK clone (Waveshare examples/libraries/firmware) -- reference only
+ESP32-S3-ePaper-1.54G/
+
+# WiFi credentials (copy src/secrets.example.h -> src/secrets.h and fill in)
+secrets.h
+
+# macOS
+.DS_Store
+
+# ESP-IDF build artifacts
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# PlatformIO
+.pio/
+.pioenvs/
+.pio-vscode/
+
+# Tooling / clangd
+compile_commands.json
+.cache/
+
+# Editor (extensions.json is shared, the rest is per-machine)
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Claude Code per-user settings
+.claude/settings.local.json
