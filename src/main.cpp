@@ -1,14 +1,14 @@
 // yuktrivia -- Waveshare ESP32-S3-ePaper-1.54(G), four-colour 200x200 e-paper.
 //
-// Shows content from API Ninjas and cycles it with the BOOT button:
-//   1. joke of the day -> 2. trivia question -> 3. its answer -> back to 1.
+// Shows three jokes from official-joke-api and cycles them with the BOOT button:
+//   joke 1 -> joke 2 -> joke 3 -> back to 1. The page dots show which one.
 //
-// Content is fetched once a day (and on first boot) and cached in RTC memory,
+// Jokes are fetched once a day (and on first boot) and cached in RTC memory,
 // so a BOOT tap wakes from deep sleep, redraws the next page from the cache
 // with no WiFi, and sleeps again.
 //
 // Before flashing: copy src/secrets.example.h to src/secrets.h and fill in
-// your WiFi credentials and API Ninjas key.
+// your WiFi credentials.
 
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -20,7 +20,7 @@
 #include "board_power.h"
 #include "content.h"
 #include "display.h"
-#include "ninjas_api.h"
+#include "joke_api.h"
 #include "time_sync.h"
 #include "ui.h"
 #include "wifi_sta.h"
@@ -56,7 +56,7 @@ static bool refresh_content(void)
         return false;
     }
     time_sync_start(10000);   // not fatal: the stamp just shows "--"
-    return ninjas_fetch_all(&s_content);
+    return joke_fetch_all(&s_content);
 }
 
 extern "C" void app_main(void)
@@ -115,7 +115,7 @@ extern "C" void app_main(void)
     }
 
     if (show_error) {
-        ui_render_message("YUKTRIVIA", "No data - check WiFi and API key");
+        ui_render_message("YUKTRIVIA", "No data - check WiFi");
     } else {
         ui_render_page(&s_content, s_content.page, wake == BOARD_WAKE_COLD_BOOT, battery_pct);
     }

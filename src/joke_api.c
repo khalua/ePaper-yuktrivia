@@ -1,20 +1,24 @@
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
 
-#include "ninjas_api.h"
-#include "secrets.h"
+#include "joke_api.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "cJSON.h"
 
-static const char *TAG = "ninjas";
+static const char *TAG = "joke_api";
 
-#define JOKE_URL   "https://api.api-ninjas.com/v1/jokeoftheday"
-#define TRIVIA_URL "https://api.api-ninjas.com/v1/triviaoftheday"
+// No API key needed. Returns an array of 10 unique {"setup", "punchline"} jokes.
+// Plain HTTP on purpose: the data is public, and the HTTPS chain (GTS Root R1
+// cross-signed by GlobalSign) fails the ESP certificate bundle.
+#define JOKES_URL "http://official-joke-api.appspot.com/random_ten"
 
-#define RESPONSE_MAX 2048
+#define RESPONSE_MAX 4096
+#define CONNECT_ATTEMPTS 3
 
 // Anything before this is a clock that was never set (2023-11-14).
 #define MIN_VALID_EPOCH 1700000000
@@ -41,7 +45,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-// GETs `url` with the API key and returns the parsed JSON, or NULL.
+// GETs `url` and returns the parsed JSON, or NULL.
 // The caller frees the result with cJSON_Delete().
 static cJSON *get_json(const char *url)
 {
@@ -56,15 +60,26 @@ static cJSON *get_json(const char *url)
         .url = url,
         .event_handler = http_event_handler,
         .user_data = &resp,
-        .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 15000,
     };
 
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_set_header(client, "X-Api-Key", NINJAS_API_KEY);
-    esp_err_t err = esp_http_client_perform(client);
-    int status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
+    // Right after WiFi comes up, DNS or the first socket can fail transiently
+    // (ESP_ERR_HTTP_CONNECT), so retry a few times before giving up.
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+    for (int attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+        resp.len = 0;
+        body[0] = '\0';
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+        err = esp_http_client_perform(client);
+        status = esp_http_client_get_status_code(client);
+        esp_http_client_cleanup(client);
+
+        if (err == ESP_OK && status == 200) break;
+        ESP_LOGW(TAG, "GET %s attempt %d/%d failed: %s, status=%d", url, attempt,
+                 CONNECT_ATTEMPTS, esp_err_to_name(err), status);
+        if (attempt < CONNECT_ATTEMPTS) vTaskDelay(pdMS_TO_TICKS(2000));
+    }
 
     if (err != ESP_OK || status != 200) {
         ESP_LOGE(TAG, "GET %s failed: %s, status=%d", url, esp_err_to_name(err), status);
@@ -78,15 +93,6 @@ static cJSON *get_json(const char *url)
         ESP_LOGE(TAG, "JSON parse failed for %s", url);
     }
     return root;
-}
-
-// Both endpoints return a one-element array, but accept a bare object too.
-static cJSON *first_object(cJSON *root)
-{
-    if (cJSON_IsArray(root)) {
-        return cJSON_GetArrayItem(root, 0);
-    }
-    return cJSON_IsObject(root) ? root : NULL;
 }
 
 static bool starts_with(const char *s, const char *prefix)
@@ -178,42 +184,42 @@ static bool copy_string_field(cJSON *obj, const char *name, char *dst, size_t ds
     return true;
 }
 
-bool ninjas_fetch_all(content_t *out)
+bool joke_fetch_all(content_t *out)
 {
     content_t tmp;
     memset(&tmp, 0, sizeof tmp);
 
-    cJSON *joke_root = get_json(JOKE_URL);
-    if (!joke_root) return false;
-    cJSON *joke = first_object(joke_root);
-    bool joke_ok = joke && copy_string_field(joke, "joke", tmp.joke, sizeof tmp.joke);
-    cJSON_Delete(joke_root);
-    if (!joke_ok || !tmp.joke[0]) {
-        ESP_LOGE(TAG, "no \"joke\" in response");
-        return false;
-    }
+    cJSON *root = get_json(JOKES_URL);
+    if (!root) return false;
 
-    cJSON *trivia_root = get_json(TRIVIA_URL);
-    if (!trivia_root) return false;
-    cJSON *trivia = first_object(trivia_root);
-    bool trivia_ok = trivia &&
-        copy_string_field(trivia, "question", tmp.question, sizeof tmp.question) &&
-        copy_string_field(trivia, "answer", tmp.answer, sizeof tmp.answer);
-    // The category is sometimes empty or missing; the UI falls back to "TRIVIA".
-    if (trivia) copy_string_field(trivia, "category", tmp.category, sizeof tmp.category);
-    cJSON_Delete(trivia_root);
-    if (!trivia_ok || !tmp.question[0] || !tmp.answer[0]) {
-        ESP_LOGE(TAG, "missing question/answer in trivia response");
+    int n = 0;
+    cJSON *item;
+    cJSON_ArrayForEach(item, root) {
+        if (n >= JOKE_COUNT) break;
+        char setup[200], punchline[200];
+        if (!copy_string_field(item, "setup", setup, sizeof setup) ||
+            !copy_string_field(item, "punchline", punchline, sizeof punchline) ||
+            !setup[0] || !punchline[0]) {
+            continue;
+        }
+        snprintf(tmp.jokes[n], sizeof tmp.jokes[n], "%s %s", setup, punchline);
+        n++;
+    }
+    cJSON_Delete(root);
+
+    if (n < JOKE_COUNT) {
+        ESP_LOGE(TAG, "only %d usable jokes in response", n);
         return false;
     }
 
     time_t now = time(NULL);
     tmp.fetched_at = now > MIN_VALID_EPOCH ? now : 0;
     tmp.valid = true;
-    tmp.page = out->page;   // a refetch shouldn't move the user off their page
+    tmp.page = 0;   // a new set of jokes starts at the first one
 
     *out = tmp;
-    ESP_LOGI(TAG, "joke: %s", out->joke);
-    ESP_LOGI(TAG, "trivia [%s]: %s -> %s", out->category, out->question, out->answer);
+    for (int i = 0; i < JOKE_COUNT; i++) {
+        ESP_LOGI(TAG, "joke %d: %s", i + 1, out->jokes[i]);
+    }
     return true;
 }

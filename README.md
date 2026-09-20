@@ -4,15 +4,13 @@ Firmware for the **Waveshare ESP32-S3-ePaper-1.54G**, a 200×200 four-colour
 (black / white / red / yellow) e-paper board with an ESP32-S3, 8 MB flash and
 8 MB PSRAM.
 
-Shows content from [API Ninjas](https://api-ninjas.com) and cycles it with the
-**BOOT** button (the non-power button):
-
-1. Joke of the day
-2. Trivia of the day (category and question)
-3. The trivia answer, then back to 1
+Shows three jokes from [official-joke-api](https://official-joke-api.appspot.com)
+(no API key) and cycles through them with the **BOOT** button (the non-power
+button): joke 1, joke 2, joke 3, then back to 1. The dots at the bottom left
+show which joke you're on.
 
 Every page has an `Updated <date> <time>` footer showing when the API was last
-called. Content is fetched on first boot and once a day after local midnight,
+called. The three jokes are fetched on first boot and once a day after local midnight,
 then cached in RTC memory. A BOOT tap wakes the board, redraws the next page
 from the cache (no WiFi, ~15 s panel refresh) and goes back to sleep. Taps
 during that refresh are ignored. See [REQUIREMENTS.md](REQUIREMENTS.md).
@@ -25,9 +23,9 @@ sdkconfig.defaults      Minimal ESP-IDF config (PSRAM, TLS cert bundle)
 partitions.csv          3 MB factory app partition
 src/
   main.cpp              Wake dispatcher: cold boot / timer / BOOT tap
-  ninjas_api.c          API Ninjas requests, JSON parsing, text cleanup
+  joke_api.c            Joke API request, JSON parsing, text cleanup
   ui.c                  Page layout: header, wrapped body, dots, footer
-  content.h             Page enum and the cached content struct
+  content.h             The cached content struct (three jokes)
   battery.c             Battery voltage -> percent (GPIO4 / ADC1 ch3)
   display.c             Panel power, framebuffer, push, scaled text
   board_power.c         Battery latch, PWR-button power-off, deep sleep
@@ -56,13 +54,12 @@ Requires [PlatformIO](https://platformio.org).
 
 ```bash
 cp src/secrets.example.h src/secrets.h   # then set WIFI_SSID, WIFI_PASSWORD
-                                         # and NINJAS_API_KEY (api-ninjas.com/profile)
 pio run -t upload
 pio device monitor
 ```
 
-`src/secrets.h` is gitignored; the key is compiled into the firmware, so don't
-share the built `.bin`.
+`src/secrets.h` is gitignored; the WiFi password is compiled into the firmware, so
+don't share the built `.bin`.
 
 Check `upload_port` / `monitor_port` in `platformio.ini` against
 `ls /dev/cu.usbmodem*`.

@@ -6,7 +6,4 @@
 #define WIFI_SSID     "your-wifi-name"
 #define WIFI_PASSWORD "your-wifi-password"
 
-// API Ninjas key (https://api-ninjas.com/profile).
-#define NINJAS_API_KEY "your-api-ninjas-key"
-
 #endif // SECRETS_H

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "ui.h"
 #include "display.h"
@@ -18,7 +17,8 @@
 #define MAX_LINES     16
 
 // Largest first. The vendor fonts top out at 24px, so long text drops down a size.
-static sFONT *const FONTS[] = { &Font24, &Font20, &Font16, &Font12 };
+// Font8 (5x8) is a last resort so a long joke still shows its punchline.
+static sFONT *const FONTS[] = { &Font24, &Font20, &Font16, &Font12, &Font8 };
 
 // Greedy word wrap of `s` into at most `max_lines` lines of `cols` characters.
 // Words longer than a line are split. Returns the line count and sets
@@ -74,7 +74,7 @@ static void draw_body(const char *text)
     int lens[MAX_LINES];
     bool truncated = false;
     int n = 0;
-    sFONT *font = &Font12;
+    sFONT *font = &Font8;
 
     for (size_t i = 0; i < sizeof FONTS / sizeof FONTS[0]; i++) {
         sFONT *f = FONTS[i];
@@ -137,33 +137,11 @@ void ui_render_page(const content_t *c, int page, bool show_hint, int battery_pc
 {
     Paint_Clear(EPD_1IN54G_WHITE);
 
-    switch (page) {
-    case PAGE_JOKE:
-        draw_header("JOKE OF THE DAY", EPD_1IN54G_YELLOW, EPD_1IN54G_BLACK);
-        draw_body(c->joke);
-        break;
-    case PAGE_TRIVIA: {
-        // The API sometimes returns an empty category.
-        char title[sizeof c->category];
-        if (c->category[0]) {
-            size_t i;
-            for (i = 0; c->category[i] && i < sizeof title - 1; i++) {
-                title[i] = (char)toupper((unsigned char)c->category[i]);
-            }
-            title[i] = '\0';
-        } else {
-            strcpy(title, "TRIVIA");
-        }
-        draw_header(title, EPD_1IN54G_YELLOW, EPD_1IN54G_BLACK);
-        draw_body(c->question);
-        break;
-    }
-    case PAGE_ANSWER:
-    default:
-        draw_header("ANSWER", EPD_1IN54G_RED, EPD_1IN54G_WHITE);
-        draw_body(c->answer);
-        break;
-    }
+    if (page < 0 || page >= JOKE_COUNT) page = 0;
+    char title[24];
+    snprintf(title, sizeof title, "JOKE %d/%d", page + 1, JOKE_COUNT);
+    draw_header(title, EPD_1IN54G_YELLOW, EPD_1IN54G_BLACK);
+    draw_body(c->jokes[page]);
 
     draw_dots(page);
     if (battery_pct >= 0 && battery_pct <= BATTERY_LOW_PCT) {
