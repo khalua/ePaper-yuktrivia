@@ -7,9 +7,12 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-# Common roots only -- the full bundle costs ~250KB. Switch to the full bundle
-# if an HTTPS endpoint fails the TLS handshake.
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+# Full bundle (~250KB): the common-roots bundle lacks the GTS root that
+# v2.jokeapi.dev chains to.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 
 # TLS + JSON parsing + text wrapping in app_main need more than the 3.5KB default.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# jokeapi.dev sends GTS Root R4 cross-signed by the old GlobalSign root, which
+# is not in the bundle; verify against the cross-signed intermediate instead.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y

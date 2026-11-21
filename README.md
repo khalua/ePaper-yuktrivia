@@ -4,7 +4,7 @@ Firmware for the **Waveshare ESP32-S3-ePaper-1.54G**, a 200×200 four-colour
 (black / white / red / yellow) e-paper board with an ESP32-S3, 8 MB flash and
 8 MB PSRAM.
 
-Shows three jokes from [official-joke-api](https://official-joke-api.appspot.com)
+Shows three jokes from [JokeAPI](https://v2.jokeapi.dev)
 (no API key) and cycles through them with the **BOOT** button (the non-power
 button): joke 1, joke 2, joke 3, then back to 1. The dots at the bottom left
 show which joke you're on.

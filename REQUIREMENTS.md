@@ -2,11 +2,11 @@
 
 ## Purpose
 A desk display that shows three jokes each day from
-[official-joke-api](https://official-joke-api.appspot.com), on the Waveshare ESP32-S3-ePaper-1.54G.
+[JokeAPI](https://v2.jokeapi.dev), on the Waveshare ESP32-S3-ePaper-1.54G.
 
 ## Content
 Three pages, one joke each, cycled in order and wrapping back to the first.
-The jokes come from one request: `GET https://official-joke-api.appspot.com/random_ten`
+The jokes come from one request: `GET https://v2.jokeapi.dev/joke/Miscellaneous,Dark,Pun?amount=3`
 (no API key). The first three usable jokes are kept, each shown as setup + punchline.
 
 ## Screen layout

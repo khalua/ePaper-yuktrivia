@@ -7,17 +7,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "cJSON.h"
 
 static const char *TAG = "joke_api";
 
-// No API key needed. Returns an array of 10 unique {"setup", "punchline"} jokes.
-// Plain HTTP on purpose: the data is public, and the HTTPS chain (GTS Root R1
-// cross-signed by GlobalSign) fails the ESP certificate bundle.
-#define JOKES_URL "http://official-joke-api.appspot.com/random_ten"
+// No API key needed. Returns {"jokes": [...]}, each either "twopart"
+// (setup + delivery) or "single" (joke), with a "safe" flag. The server
+// redirects HTTP to HTTPS, so TLS is verified with the ESP certificate bundle.
+#define JOKES_URL "https://v2.jokeapi.dev/joke/Miscellaneous,Dark,Pun?amount=3"
 
-#define RESPONSE_MAX 4096
+#define RESPONSE_MAX 8192
 #define CONNECT_ATTEMPTS 3
 
 // Anything before this is a clock that was never set (2023-11-14).
@@ -61,6 +62,7 @@ static cJSON *get_json(const char *url)
         .event_handler = http_event_handler,
         .user_data = &resp,
         .timeout_ms = 15000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
 
     // Right after WiFi comes up, DNS or the first socket can fail transiently
@@ -184,6 +186,24 @@ static bool copy_string_field(cJSON *obj, const char *name, char *dst, size_t ds
     return true;
 }
 
+// Reads one JokeAPI entry into `dst` ("single": joke; "twopart": setup +
+// delivery). Returns false if it has no usable text.
+static bool read_joke(cJSON *item, char *dst, size_t dst_len)
+{
+    cJSON *type = cJSON_GetObjectItem(item, "type");
+    if (cJSON_IsString(type) && type->valuestring && strcmp(type->valuestring, "single") == 0) {
+        return copy_string_field(item, "joke", dst, dst_len) && dst[0];
+    }
+    char setup[200], delivery[200];
+    if (!copy_string_field(item, "setup", setup, sizeof setup) ||
+        !copy_string_field(item, "delivery", delivery, sizeof delivery) ||
+        !setup[0] || !delivery[0]) {
+        return false;
+    }
+    snprintf(dst, dst_len, "%s %s", setup, delivery);
+    return true;
+}
+
 bool joke_fetch_all(content_t *out)
 {
     content_t tmp;
@@ -192,17 +212,24 @@ bool joke_fetch_all(content_t *out)
     cJSON *root = get_json(JOKES_URL);
     if (!root) return false;
 
+    cJSON *err = cJSON_GetObjectItem(root, "error");
+    cJSON *jokes = cJSON_GetObjectItem(root, "jokes");
+    if (cJSON_IsTrue(err) || !cJSON_IsArray(jokes)) {
+        ESP_LOGE(TAG, "API returned an error or no jokes array");
+        cJSON_Delete(root);
+        return false;
+    }
+
+    // Safe jokes fill the slots first (in API order), then unsafe ones, so slot
+    // 1 is only unsafe when every joke is. A missing "safe" counts as unsafe.
+    bool safe[JOKE_COUNT] = {0};
+    char text[JOKE_COUNT][sizeof tmp.jokes[0]];
     int n = 0;
     cJSON *item;
-    cJSON_ArrayForEach(item, root) {
+    cJSON_ArrayForEach(item, jokes) {
         if (n >= JOKE_COUNT) break;
-        char setup[200], punchline[200];
-        if (!copy_string_field(item, "setup", setup, sizeof setup) ||
-            !copy_string_field(item, "punchline", punchline, sizeof punchline) ||
-            !setup[0] || !punchline[0]) {
-            continue;
-        }
-        snprintf(tmp.jokes[n], sizeof tmp.jokes[n], "%s %s", setup, punchline);
+        if (!read_joke(item, text[n], sizeof text[n])) continue;
+        safe[n] = cJSON_IsTrue(cJSON_GetObjectItem(item, "safe"));
         n++;
     }
     cJSON_Delete(root);
@@ -210,6 +237,15 @@ bool joke_fetch_all(content_t *out)
     if (n < JOKE_COUNT) {
         ESP_LOGE(TAG, "only %d usable jokes in response", n);
         return false;
+    }
+
+    int slot = 0;
+    for (int pass = 1; pass >= 0; pass--) {
+        for (int i = 0; i < JOKE_COUNT; i++) {
+            if (safe[i] == (bool)pass) {
+                memcpy(tmp.jokes[slot++], text[i], sizeof tmp.jokes[0]);
+            }
+        }
     }
 
     time_t now = time(NULL);

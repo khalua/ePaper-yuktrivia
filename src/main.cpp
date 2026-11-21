@@ -1,6 +1,6 @@
 // yuktrivia -- Waveshare ESP32-S3-ePaper-1.54(G), four-colour 200x200 e-paper.
 //
-// Shows three jokes from official-joke-api and cycles them with the BOOT button:
+// Shows three jokes from JokeAPI and cycles them with the BOOT button:
 //   joke 1 -> joke 2 -> joke 3 -> back to 1. The page dots show which one.
 //
 // Jokes are fetched once a day (and on first boot) and cached in RTC memory,
