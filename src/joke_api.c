@@ -14,9 +14,9 @@
 static const char *TAG = "joke_api";
 
 // No API key needed. Returns {"jokes": [...]}, each either "twopart"
-// (setup + delivery) or "single" (joke), with a "safe" flag. The server
+// (setup + delivery) or "single" (joke). The server
 // redirects HTTP to HTTPS, so TLS is verified with the ESP certificate bundle.
-#define JOKES_URL "https://v2.jokeapi.dev/joke/Miscellaneous,Dark,Pun?amount=3"
+#define JOKES_URL "https://v2.jokeapi.dev/joke/Miscellaneous,Pun?blacklistFlags=nsfw,religious,political,racist,sexist,explicit&amount=3"
 
 #define RESPONSE_MAX 8192
 #define CONNECT_ATTEMPTS 3
@@ -220,32 +220,17 @@ bool joke_fetch_all(content_t *out)
         return false;
     }
 
-    // Safe jokes fill the slots first (in API order), then unsafe ones, so slot
-    // 1 is only unsafe when every joke is. A missing "safe" counts as unsafe.
-    bool safe[JOKE_COUNT] = {0};
-    char text[JOKE_COUNT][sizeof tmp.jokes[0]];
     int n = 0;
     cJSON *item;
     cJSON_ArrayForEach(item, jokes) {
         if (n >= JOKE_COUNT) break;
-        if (!read_joke(item, text[n], sizeof text[n])) continue;
-        safe[n] = cJSON_IsTrue(cJSON_GetObjectItem(item, "safe"));
-        n++;
+        if (read_joke(item, tmp.jokes[n], sizeof tmp.jokes[n])) n++;
     }
     cJSON_Delete(root);
 
     if (n < JOKE_COUNT) {
         ESP_LOGE(TAG, "only %d usable jokes in response", n);
         return false;
-    }
-
-    int slot = 0;
-    for (int pass = 1; pass >= 0; pass--) {
-        for (int i = 0; i < JOKE_COUNT; i++) {
-            if (safe[i] == (bool)pass) {
-                memcpy(tmp.jokes[slot++], text[i], sizeof tmp.jokes[0]);
-            }
-        }
     }
 
     time_t now = time(NULL);

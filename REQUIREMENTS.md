@@ -6,7 +6,7 @@ A desk display that shows three jokes each day from
 
 ## Content
 Three pages, one joke each, cycled in order and wrapping back to the first.
-The jokes come from one request: `GET https://v2.jokeapi.dev/joke/Miscellaneous,Dark,Pun?amount=3`
+The jokes come from one request: `GET https://v2.jokeapi.dev/joke/Miscellaneous,Pun?blacklistFlags=nsfw,religious,political,racist,sexist,explicit&amount=3`
 (no API key). The first three usable jokes are kept, each shown as setup + punchline.
 
 ## Screen layout
